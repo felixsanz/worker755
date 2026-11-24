@@ -1,5 +1,5 @@
 import { createGateway } from 'ai';
-import { DIRECT_MODELS, isDirect, localHeaders, localUrl, providerModelId } from './providers.ts';
+import { DIRECT_MODELS, isDirect, localHeaders, localUrl, providerModelId, vertexBaseUrl } from './providers.ts';
 import type { Credentials, ProviderId } from './providers.ts';
 
 export interface ModelOption {
@@ -117,6 +117,7 @@ const MAX_KEY_MODELS = 800;
 
 /** OpenAI's list has every kind of model; only chat models can manage. */
 const OPENAI_NOT_CHAT = /embed|whisper|tts|dall-e|image|audio|realtime|transcribe|moderation|search|davinci|babbage|sora/i;
+const GOOGLE_NOT_CHAT = /embed|image|nano-banana|veo|tts|audio|live|transcribe|translate|aqa|bison|gecko|robotics|computer-use|learnlm|decision|file-processing/i;
 
 class KeyCheckError extends Error {
   readonly problem: KeyProblem;
@@ -144,10 +145,11 @@ function entries(body: unknown): Record<string, unknown>[] {
 }
 
 /** A vendor's own model under the game's id: the known spelling when there is one, else vendor/native. */
-function directOption(provider: 'anthropic' | 'openai' | 'deepseek', native: string, name?: unknown): ModelOption {
+function directOption(provider: 'anthropic' | 'openai' | 'deepseek' | 'google' | 'vertex', native: string, name?: unknown): ModelOption {
   const known = DIRECT_MODELS[provider].find((m) => m.native === native);
   if (known) return { id: known.id, label: known.label };
-  return { id: `${provider}/${native}`, label: typeof name === 'string' && name ? name : native };
+  const prefix = provider === 'vertex' ? 'google' : provider;
+  return { id: `${prefix}/${native}`, label: typeof name === 'string' && name ? name : native };
 }
 
 /** What the local model server has, by its own names; embedding models cannot manage anyone. */
@@ -205,6 +207,76 @@ async function fetchKeyModels(cred: Credentials): Promise<ModelOption[]> {
     case 'deepseek': {
       const body = await getJson('https://api.deepseek.com/models', bearer);
       return entries(body).flatMap((m) => (typeof m.id === 'string' ? [directOption('deepseek', m.id)] : []));
+    }
+    case 'google': {
+      const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000', {
+        headers: { 'x-goog-api-key': cred.apiKey },
+        signal: AbortSignal.timeout(KEY_CHECK_MS),
+      });
+      if (!res.ok) {
+        if (res.status === 400) {
+          const errBody = await res.json().catch(() => null);
+          const details = (errBody as { error?: { details?: unknown } } | null)?.error?.details;
+          if (
+            Array.isArray(details) &&
+            details.some(
+              (d) => d && typeof d === 'object' && (d as { reason?: unknown }).reason === 'API_KEY_INVALID',
+            )
+          ) {
+            throw new KeyCheckError('key');
+          }
+        }
+        throw new KeyCheckError(problemOf(res.status));
+      }
+      const body = await res.json();
+      const list = (body as { models?: unknown })?.models;
+      if (!Array.isArray(list)) return [];
+      return list.flatMap((raw) => {
+        if (!raw || typeof raw !== 'object') return [];
+        const m = raw as { name?: unknown; displayName?: unknown; supportedGenerationMethods?: unknown };
+        if (typeof m.name !== 'string') return [];
+        if (!Array.isArray(m.supportedGenerationMethods) || !m.supportedGenerationMethods.includes('generateContent')) {
+          return [];
+        }
+        const native = m.name.replace(/^models\//, '');
+        if (!/^gemini-/i.test(native) || GOOGLE_NOT_CHAT.test(native)) return [];
+        return [directOption('google', native, m.displayName)];
+      });
+    }
+    case 'vertex': {
+      const base = vertexBaseUrl();
+      let authProblem: KeyProblem | null = null;
+      let sawDown = false;
+      const results = await Promise.all(
+        DIRECT_MODELS.vertex.map(async (m) => {
+          try {
+            const res = await fetch(`${base}/models/${m.native}:countTokens`, {
+              method: 'POST',
+              headers: { 'x-goog-api-key': cred.apiKey, 'content-type': 'application/json' },
+              body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
+              signal: AbortSignal.timeout(KEY_CHECK_MS),
+            });
+            if (res.status === 401 || res.status === 403) {
+              authProblem = 'key';
+              return null;
+            }
+            if (res.status === 402) {
+              authProblem ??= 'credit';
+              return null;
+            }
+            if (res.ok) return { id: m.id, label: m.label };
+            if (res.status !== 404) sawDown = true;
+            return null;
+          } catch {
+            sawDown = true;
+            return null;
+          }
+        }),
+      );
+      const found = results.filter((m): m is ModelOption => m !== null);
+      if (found.length) return found;
+      if (authProblem) throw new KeyCheckError(authProblem);
+      throw new KeyCheckError(sawDown ? 'down' : 'key');
     }
   }
 }

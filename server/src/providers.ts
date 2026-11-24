@@ -10,8 +10,9 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createDeepSeek } from '@ai-sdk/deepseek';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 
-export type ProviderId = 'gateway' | 'openrouter' | 'anthropic' | 'openai' | 'deepseek' | 'local';
+export type ProviderId = 'gateway' | 'openrouter' | 'anthropic' | 'openai' | 'deepseek' | 'google' | 'vertex' | 'local';
 
 export interface ProviderInfo {
   id: ProviderId;
@@ -29,6 +30,8 @@ export const PROVIDERS: ProviderInfo[] = [
   { id: 'anthropic', label: 'Anthropic', keyUrl: 'https://console.anthropic.com/settings/keys' },
   { id: 'openai', label: 'OpenAI', keyUrl: 'https://platform.openai.com/api-keys' },
   { id: 'deepseek', label: 'DeepSeek', keyUrl: 'https://platform.deepseek.com/api_keys' },
+  { id: 'google', label: 'Google', keyUrl: 'https://aistudio.google.com/apikey' },
+  { id: 'vertex', label: 'Vertex AI', keyUrl: 'https://cloud.google.com/vertex-ai/generative-ai/docs/start/express-mode/overview' },
 ];
 
 /**
@@ -36,7 +39,7 @@ export const PROVIDERS: ProviderInfo[] = [
  * spelling everywhere in the game; `native` is what the vendor's own API calls them (checked
  * against each API's model list on 2026-11-11).
  */
-export const DIRECT_MODELS: Record<'anthropic' | 'openai' | 'deepseek', { id: string; native: string; label: string }[]> = {
+export const DIRECT_MODELS: Record<'anthropic' | 'openai' | 'deepseek' | 'google' | 'vertex', { id: string; native: string; label: string }[]> = {
   anthropic: [
     { id: 'anthropic/claude-haiku-5.5', native: 'claude-haiku-5-5', label: 'Claude Haiku 5.5' },
     { id: 'anthropic/claude-sonnet-5.5', native: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5' },
@@ -49,10 +52,46 @@ export const DIRECT_MODELS: Record<'anthropic' | 'openai' | 'deepseek', { id: st
     { id: 'deepseek/deepseek-v4.1-flash', native: 'deepseek-flash', label: 'DeepSeek V4.1 Flash' },
     { id: 'deepseek/deepseek-v4-pro', native: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
   ],
+  google: [
+    { id: 'google/gemini-3.1-flash-lite', native: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite' },
+    { id: 'google/gemini-4-argon', native: 'gemini-4-argon', label: 'Gemini 4 Argon' },
+    { id: 'google/gemini-4-hydrogen', native: 'gemini-4-hydrogen', label: 'Gemini 4 Hydrogen' },
+  ],
+  vertex: [
+    { id: 'google/gemini-3.1-flash-lite', native: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite' },
+    { id: 'google/gemini-3.5-flash', native: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
+    { id: 'google/gemini-3.8-flash', native: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash' },
+    { id: 'google/gemini-3.1-pro-preview', native: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro Preview' },
+    { id: 'google/gemini-4-argon', native: 'gemini-4-argon', label: 'Gemini 4 Argon' },
+    { id: 'google/gemini-4-hydrogen', native: 'gemini-4-hydrogen', label: 'Gemini 4 Hydrogen' },
+    { id: 'google/gemini-4-carbon', native: 'gemini-4-carbon', label: 'Gemini 4 Carbon' },
+    { id: 'google/gemini-4-neon', native: 'gemini-4-neon', label: 'Gemini 4 Neon' },
+  ],
 };
 
-export function isDirect(p: ProviderId): p is 'anthropic' | 'openai' | 'deepseek' {
-  return p === 'anthropic' || p === 'openai' || p === 'deepseek';
+export function isDirect(p: ProviderId): p is 'anthropic' | 'openai' | 'deepseek' | 'google' | 'vertex' {
+  return p === 'anthropic' || p === 'openai' || p === 'deepseek' || p === 'google' || p === 'vertex';
+}
+
+export const VERTEX_EXPRESS_BASE_URL = 'https://aiplatform.googleapis.com/v1/publishers/google';
+
+/**
+ * Vertex AI Express Mode base URL. Defaults to Google's project-less Express endpoint; when the
+ * operator sets VERTEX_PROJECT (and optionally VERTEX_LOCATION, defaulting to 'global'), targets
+ * that project/location so global-only publisher models can be reached with the Express API key.
+ */
+export function vertexBaseUrl(): string {
+  const project = (process.env.VERTEX_PROJECT ?? '').trim();
+  if (!project || project === '-' || !/^[A-Za-z0-9-]+$/.test(project)) return VERTEX_EXPRESS_BASE_URL;
+  const loc = (process.env.VERTEX_LOCATION ?? 'global').trim() || 'global';
+  if (!/^[a-z0-9-]+$/.test(loc)) return VERTEX_EXPRESS_BASE_URL;
+  const host =
+    loc === 'global'
+      ? 'aiplatform.googleapis.com'
+      : loc === 'us' || loc === 'eu'
+        ? `aiplatform.${loc}.rep.googleapis.com`
+        : `${loc}-aiplatform.googleapis.com`;
+  return `https://${host}/v1/projects/${project}/locations/${loc}/publishers/google`;
 }
 
 export interface Credentials {
@@ -155,5 +194,9 @@ export function languageModel(cred: Credentials, id: string): LanguageModel {
   if (cred.provider === 'anthropic') return createAnthropic({ apiKey: cred.apiKey })(providerModelId('anthropic', id));
   if (cred.provider === 'openai') return createOpenAI({ apiKey: cred.apiKey })(providerModelId('openai', id));
   if (cred.provider === 'deepseek') return createDeepSeek({ apiKey: cred.apiKey })(providerModelId('deepseek', id));
+  if (cred.provider === 'google') return createGoogleGenerativeAI({ apiKey: cred.apiKey })(providerModelId('google', id));
+  if (cred.provider === 'vertex') {
+    return createGoogleGenerativeAI({ apiKey: cred.apiKey, baseURL: vertexBaseUrl() })(providerModelId('vertex', id));
+  }
   return createGateway({ apiKey: cred.apiKey })(id);
 }

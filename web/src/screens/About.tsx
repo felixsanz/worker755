@@ -8,7 +8,7 @@ const CREDITS: { name: string; href: string; packages?: string[] }[] = [
   { name: 'Vite', href: 'https://vite.dev/' },
   { name: 'TypeScript', href: 'https://www.typescriptlang.org/' },
   { name: 'Node.js', href: 'https://nodejs.org/' },
-  { name: 'AI SDK', href: 'https://ai-sdk.dev/', packages: ['ai', '@ai-sdk/anthropic', '@ai-sdk/openai', '@ai-sdk/deepseek'] },
+  { name: 'AI SDK', href: 'https://ai-sdk.dev/', packages: ['ai', '@ai-sdk/anthropic', '@ai-sdk/openai', '@ai-sdk/deepseek', '@ai-sdk/google'] },
   { name: 'OpenRouter AI SDK Provider', href: 'https://github.com/OpenRouterTeam/ai-sdk-provider', packages: ['@openrouter/ai-sdk-provider'] },
   { name: 'Fontsource', href: 'https://fontsource.org/' },
   { name: 'Archivo', href: 'https://fontsource.org/fonts/archivo' },

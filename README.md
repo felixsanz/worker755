@@ -23,8 +23,9 @@ something new to lose.
   cheap model. With sign-in on (worker755.com), an account gets a starter credit worth about one
   shift, then tops up ($10 to $200) and pays for what it uses; after a top-up any offered model
   can run on the server's key.
-- **Your API key**: bring an [OpenRouter](https://openrouter.ai/settings/keys) or Vercel AI
-  Gateway key and pick any offered model. The key is sent only to the game server when a shift
+- **Your API key**: bring an [OpenRouter](https://openrouter.ai/settings/keys), Vercel AI
+  Gateway, Anthropic, OpenAI, DeepSeek, Google (AI Studio), or Vertex AI (Express Mode) key and
+  pick any offered model. The key is sent only to the game server when a shift
   starts. It is kept in that shift's memory and never logged or stored. Your browser keeps it only
   if you tick "Remember on this device". A full shift on Claude Haiku costs a few cents at most.
 
@@ -154,6 +155,8 @@ Everything is optional. See [.env.example](.env.example).
 | `MANAGER_MODELS` | built-in list | Models offered, in gateway naming (`vendor/model`) |
 | `LOCAL_LLM_URL` | | An OpenAI-compatible model server of your own, e.g. `http://127.0.0.1:11434/v1` for Ollama; offered as **Local** |
 | `LOCAL_LLM_API_KEY` | | Sent to that server, for ones that want a key |
+| `VERTEX_PROJECT` | | Optional GCP project ID/number for Vertex AI Express Mode (`projects/<id>/locations/<loc>`) to reach global-only models |
+| `VERTEX_LOCATION` | global | Location used with `VERTEX_PROJECT` (e.g. `global`, `us-central1`) |
 | `INSTRUCTION_TIMEOUT_MS` | 90000 | Time per instruction |
 | `HOST`, `PORT` | 127.0.0.1, 8755 | |
 | `TRUST_PROXY` | 0 | Read client addresses from `cf-connecting-ip` |

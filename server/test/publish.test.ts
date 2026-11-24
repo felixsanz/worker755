@@ -113,7 +113,7 @@ test('without a server key, a shift needs the player\'s own key', async () => {
     const models = await api('GET', '/api/models');
     assert.equal(models.json.free, false);
     assert.deepEqual(models.json.models, []);
-    assert.deepEqual(models.json.providers.map((p: { id: string }) => p.id), ['openrouter', 'gateway', 'anthropic', 'openai', 'deepseek']);
+    assert.deepEqual(models.json.providers.map((p: { id: string }) => p.id), ['openrouter', 'gateway', 'anthropic', 'openai', 'deepseek', 'google', 'vertex']);
     assert.equal((await api('GET', '/api/models?provider=openrouter')).json.models.length, 2);
     assert.equal((await api('GET', '/api/models?provider=x')).status, 400);
     const r = await api('POST', '/api/sessions', {});
@@ -630,12 +630,23 @@ function waitFor(s: Session, pred: (e: GameEvent) => boolean, timeoutMs = 5000):
   });
 }
 
-test("a player's key can go straight to Anthropic, OpenAI or DeepSeek, with each vendor's own model names", async () => {
+test("a player's key can go straight to Anthropic, OpenAI, DeepSeek, Google or Vertex AI, with each vendor's own model names", async () => {
   const { listModels } = await import('../src/models.ts');
   const { providerModelId } = await import('../src/providers.ts');
   assert.deepEqual((await listModels('anthropic')).map((m) => m.id), ['anthropic/claude-haiku-5.5', 'anthropic/claude-sonnet-5.5']);
+  assert.deepEqual((await listModels('google')).map((m) => m.id), [
+    'google/gemini-3.1-flash-lite',
+    'google/gemini-4-argon',
+    'google/gemini-4-hydrogen',
+  ]);
+  const vertexIds = (await listModels('vertex')).map((m) => m.id);
+  assert.ok(vertexIds.includes('google/gemini-3.1-flash-lite'));
+  assert.ok(vertexIds.includes('google/gemini-4-hydrogen'));
+  assert.ok(vertexIds.includes('google/gemini-4-neon'));
   assert.equal(providerModelId('anthropic', 'anthropic/claude-haiku-5.5'), 'claude-haiku-5-5');
   assert.equal(providerModelId('openai', 'openai/gpt-6-luna'), 'gpt-6-luna');
   assert.equal(providerModelId('deepseek', 'deepseek/deepseek-v4.1-flash'), 'deepseek-flash');
+  assert.equal(providerModelId('google', 'google/gemini-3.1-flash-lite'), 'gemini-3.1-flash-lite');
+  assert.equal(providerModelId('vertex', 'google/gemini-4-hydrogen'), 'gemini-4-hydrogen');
   assert.equal(providerModelId('gateway', 'deepseek/deepseek-v4.1-flash'), 'deepseek/deepseek-v4.1-flash');
 });

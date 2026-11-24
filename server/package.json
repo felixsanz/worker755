@@ -18,6 +18,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.102",
     "@ai-sdk/deepseek": "^3.0.84",
+    "@ai-sdk/google": "^4.0.125",
     "@ai-sdk/openai": "^4.0.115",
     "@openrouter/ai-sdk-provider": "^3.1.0",
     "@resvg/resvg-wasm": "^2.6.2",
